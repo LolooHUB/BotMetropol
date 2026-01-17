@@ -1,0 +1,28 @@
+name: Despliegue Bot Metropol
+on:
+  workflow_dispatch: # Lo inicias manualmente desde la pestaña Actions
+
+jobs:
+  run-metropol:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout del Repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Instalar Dependencias
+        run: |
+          pip install discord.py
+
+      - name: Sincronizar y Ejecutar Bot
+        env:
+          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+        run: |
+          # Primero forzamos la sincronización de comandos
+          python deploy.py
+          # Luego iniciamos el bot principal
+          python main.py

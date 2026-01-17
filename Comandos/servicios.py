@@ -1,0 +1,43 @@
+import discord
+from discord import app_commands
+from discord.ext import commands
+from datetime import datetime
+
+class Servicios(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+        self.canal_auxilio_envio = 1390464495725576304
+        self.canal_auxilio_embed = 1461926580078252054
+        self.rol_cliente_id = 1390152252143964262
+        self.rol_auxiliar_id = 1390152252143964268
+        self.path_logo = "./Imgs/LogoPFP.png"
+
+    @app_commands.command(name="auxilio", description="Solicitud de auxilio mecánico en ruta")
+    async def auxilio(self, interaction: discord.Interaction, chofer: discord.Member, lugar: str, motivo: str, foto: discord.Attachment):
+        # Filtro de Canal
+        if interaction.channel_id != self.canal_auxilio_envio:
+            return await interaction.response.send_message(f"❌ Solo puedes usar este comando en <#{self.canal_auxilio_envio}>", ephemeral=True)
+        
+        # Filtro de Rol
+        if any(role.id == self.rol_cliente_id for role in interaction.user.roles):
+            return await interaction.response.send_message("❌ Los Clientes no pueden solicitar auxilio.", ephemeral=True)
+
+        await interaction.response.defer(ephemeral=True)
+
+        canal_dest = interaction.guild.get_channel(self.canal_auxilio_embed)
+        file = discord.File(self.path_logo, filename="LogoPFP.png")
+        
+        embed = discord.Embed(title="📛 Solicitud de Auxilio", color=discord.Color.orange(), timestamp=datetime.now())
+        embed.set_author(name="La Nueva Metropol S.A.", icon_url="attachment://LogoPFP.png")
+        embed.add_field(name="Chofer", value=chofer.mention, inline=True)
+        embed.add_field(name="Lugar", value=lugar, inline=True)
+        embed.add_field(name="Motivo", value=motivo, inline=False)
+        embed.set_image(url=foto.url)
+        embed.set_footer(text="La Nueva Metropol S.A.")
+
+        mencion_aux = interaction.guild.get_role(self.rol_auxiliar_id)
+        await canal_dest.send(content=mencion_aux.mention if mencion_aux else "@Auxiliares", file=file, embed=embed)
+        await interaction.followup.send("✅ Solicitud enviada correctamente a los auxiliares.", ephemeral=True)
+
+async def setup(bot):
+    await bot.add_cog(Servicios(bot))
