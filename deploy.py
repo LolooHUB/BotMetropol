@@ -2,45 +2,42 @@ import discord
 from discord.ext import commands
 import os
 import asyncio
-import firebase_admin
-from firebase_admin import credentials, firestore
 import json
 
 async def sincronizar():
-    # Inicializar Firebase para que no de error al cargar los Cogs
-    if not firebase_admin._apps:
-        fb_config = os.getenv('FIREBASE_CONFIG')
-        if fb_config:
-            cred = credentials.Certificate(json.loads(fb_config.strip()))
-            firebase_admin.initialize_app(cred)
-
-    intents = discord.Intents.all()
+    # Solo necesitamos los intents básicos para sincronizar
+    intents = discord.Intents.default()
     bot = commands.Bot(command_prefix="!", intents=intents)
     
-    extensions = ['Comandos.moderacion', 'Comandos.servicios']
-    
+    # ID de tu servidor (Asegurate que sea este)
+    GUILD_ID = discord.Object(id=1390152252143964260) 
+
     async with bot:
-        print("--- 🗑️ Limpiando comandos antiguos ---")
-        await bot.login(os.getenv('DISCORD_TOKEN'))
+        print("--- 🛠️ Iniciando Registro Forzado ---")
         
-        # Sincronizar vacío para limpiar la caché de Discord
-        bot.tree.clear(guild=None)
-        await bot.tree.sync()
-        
-        print("--- 📥 Cargando extensiones nuevas ---")
+        # Intentamos cargar las extensiones pero ignoramos errores de Firebase
+        extensions = ['Comandos.moderacion', 'Comandos.servicios']
         for ext in extensions:
             try:
                 await bot.load_extension(ext)
-                print(f"✅ Cargado: {ext}")
+                print(f"✅ Extensión preparada: {ext}")
             except Exception as e:
-                print(f"❌ Error en {ext}: {e}")
+                print(f"⚠️ Error cargando {ext} (pero seguiremos): {e}")
         
-        # Sincronizar los comandos reales
-        print("--- 🚀 Sincronizando comandos de Firestore ---")
-        comandos = await bot.tree.sync()
+        print("Conectando a Discord...")
+        await bot.login(os.getenv('DISCORD_TOKEN'))
         
-        print(f"--- ✅ ÉXITO ---")
-        print(f"Se registraron {len(comandos)} comandos. El bot ya debería reconocer /auxilio.")
+        # LIMPIEZA TOTAL Y REGISTRO EN EL SERVIDOR
+        print("Limpiando comandos antiguos...")
+        bot.tree.clear(guild=GUILD_ID)
+        
+        print(f"Sincronizando en servidor: {GUILD_ID.id}")
+        bot.tree.copy_global_to(guild=GUILD_ID)
+        comandos = await bot.tree.sync(guild=GUILD_ID)
+        
+        print(f"--- ✅ SINCRONIZACIÓN COMPLETADA ---")
+        print(f"Se registraron {len(comandos)} comandos en el servidor.")
+        
         await bot.close()
 
 if __name__ == "__main__":
