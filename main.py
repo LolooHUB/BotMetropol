@@ -89,10 +89,11 @@ async def on_message(message):
     if bot.user.mentioned_in(message) and not message.mention_everyone:
         respuestas = [
             "¿Necesitas ayuda?, hace !ayuda para mas.",
-            "¿Ya te inscribiste a Metropol en <#1390152260578967558>?",
+            "¿Ya te inscribiste a Metropol?",
             "¡Hola! Los servicios operan con normalidad.",
             "¿Buscás formar parte? Mirá <#1390152260578967558>.",
-            "¡Buenas! Recordá que el respeto al pasajero es lo primero."
+            "¡Buenas! Recordá que el respeto al pasajero es lo primero.",
+            "QUE QUERESSSSSS"
         ]
         await message.reply(random.choice(respuestas))
 
