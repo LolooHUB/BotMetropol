@@ -1,101 +1,46 @@
 import discord
-from discord.ext import commands, tasks
-import os
-import sys
-import logging
-import random
+from discord import app_commands
+from discord.ext import commands
 from datetime import datetime
 
-# Configuración de Logs para ver todo en el panel de GitHub Actions
-logging.basicConfig(level=logging.INFO, format='%(asctime)s:%(levelname)s:%(name)s: %(message)s')
+# --- MODAL PARA BANEO ---
+class BanModal(discord.ui.Modal, title='Sistema de Baneo - Metropol'):
+    usuario = discord.ui.TextInput(label='Usuario (ID o mención)', placeholder='Ej: 123456789', required=True)
+    motivo = discord.ui.TextInput(label='Motivo de la sanción', style=discord.TextStyle.paragraph, required=True)
+    duracion = discord.ui.TextInput(label='Duración', placeholder='Ej: 7 días / Permanente', required=True)
+    evidencia = discord.ui.TextInput(label='Link de Evidencia (Opcional)', required=False)
 
-class MetropolBot(commands.Bot):
-    def __init__(self):
-        intents = discord.Intents.all()
-        super().__init__(
-            command_prefix="!",
-            intents=intents,
-            help_command=None,
-            chunk_guilds_at_startup=True
-        )
-        self.inicial_extensions = [
-            'Comandos.moderacion',
-            'Comandos.servicios'
-        ]
-
-    async def setup_hook(self):
-        """Se ejecuta antes de que el bot se conecte a Discord"""
-        print("--- Iniciando Carga de Extensiones ---")
-        for extension in self.inicial_extensions:
-            try:
-                await self.load_extension(extension)
-                print(f"✅ Extensión cargada: {extension}")
-            except Exception as e:
-                print(f"❌ Error cargando {extension}: {e}")
-
-        # Sincronización automática al encender
-        print("--- Sincronizando Comandos de Barra ---")
-        await self.tree.sync()
-        print("✅ Sincronización completada.")
+    async def on_submit(self, interaction: discord.Interaction):
+        canal_logs = interaction.guild.get_channel(1390152261937922070)
+        canal_sanciones = interaction.guild.get_channel(1397738825609904242)
         
-        # Iniciar tareas en segundo plano
-        self.presencia_loop.start()
+        embed = discord.Embed(title="⛔ Usuario Baneado", color=discord.Color.red(), timestamp=datetime.now())
+        embed.set_author(name="La Nueva Metropol S.A.", icon_url="https://tu-link.com/LogoPFP.png") # Cambiar por path real
+        embed.add_field(name="Usuario", value=self.usuario.value, inline=False)
+        embed.add_field(name="Motivo", value=self.motivo.value, inline=False)
+        embed.add_field(name="Duración", value=self.duracion.value, inline=True)
+        embed.add_field(name="Evidencia", value=self.evidencia.value or "No provista", inline=True)
+        embed.add_field(name="Administrador", value=interaction.user.mention, inline=False)
+        embed.set_footer(text="La Nueva Metropol S.A.")
 
-    @tasks.loop(minutes=20)
-    async def presencia_loop(self):
-        """Ciclo de actividad permanente"""
-        estados = [
-            "Cuando pasa la 65?", 
-            "Ya te anotaste para Metropol?", 
-            "Que lindos los ints de Metropol!"
-        ]
-        nuevo_estado = random.choice(estados)
-        await self.change_presence(activity=discord.Game(name=nuevo_estado))
-        print(f"🎮 Estado cambiado a: {nuevo_estado}")
+        await canal_sanciones.send(embed=embed)
+        if canal_logs: await canal_logs.send(embed=embed)
+        await interaction.response.send_message(f"✅ Sanción aplicada a {self.usuario.value}", ephemeral=True)
 
-    async def on_ready(self):
-        print(f"--- BOT ONLINE ---")
-        print(f"Nombre: {self.user.name}")
-        print(f"ID: {self.user.id}")
-        print(f"Servidores: {len(self.guilds)}")
-        print("------------------")
+class Moderacion(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+        self.roles_admin = [1390152252169125992, 1445570965852520650, 1397020690435149824]
 
-# --- EVENTOS DE INTERACCIÓN ---
+    def es_admin(self, interaction):
+        return any(role.id in self.roles_admin for role in interaction.user.roles)
 
-bot = MetropolBot()
+    @app_commands.command(name="ban", description="Banear a un usuario de la empresa")
+    async def ban(self, interaction: discord.Interaction):
+        if self.es_admin(interaction):
+            await interaction.response.send_modal(BanModal())
+        else:
+            await interaction.response.send_message("❌ No tienes rango jerárquico para esto.", ephemeral=True)
 
-@bot.event
-async def on_message(message):
-    if message.author.bot:
-        return
-
-    # Escuchar Pings al Bot
-    if bot.user.mentioned_in(message) and not message.mention_everyone:
-        respuestas = [
-            "¿Necesitas ayuda?, hace !ayuda para mas.",
-            "¿Ya te inscribiste a Metropol en <#1390152260578967558>?",
-            "¡Hola! Los servicios operan con normalidad.",
-            "¿Buscás formar parte? Mirá <#1390152260578967558>.",
-            "¡Buenas! Recordá que el respeto al pasajero es lo primero."
-        ]
-        await message.reply(random.choice(respuestas))
-
-    # Comandos de texto directo (Compatibilidad)
-    if message.content.lower() == "!ayuda":
-        msg = ("Si queres obtener informacion acerca de los formularios ejecuta !formularios 🔰\n"
-               "¿Queres hablar con el staff?, podes abrir un ticket en <#1390152260578967559>")
-        await message.reply(msg)
-    
-    if message.content.lower() == "!formularios":
-        await message.reply("Fijate el estado de nuestros formularios de ingreso en <#1390152260578967558> 💯")
-
-    await bot.process_commands(message)
-
-# --- EJECUCIÓN PRINCIPAL ---
-if __name__ == "__main__":
-    token = os.getenv('DISCORD_TOKEN')
-    if not token:
-        print("❌ CRITICAL ERROR: DISCORD_TOKEN no encontrado en Secrets.")
-        sys.exit(1)
-    
-    bot.run(token)
+async def setup(bot):
+    await bot.add_cog(Moderacion(bot))
