@@ -1,8 +1,12 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from firebase_admin import firestore
+import os
+
+# --- CONFIGURACIÓN HORA ARGENTINA ---
+tz_arg = timezone(timedelta(hours=-3))
 
 class Ban(commands.Cog):
     def __init__(self, bot):
@@ -17,37 +21,61 @@ class Ban(commands.Cog):
         if not any(role.id in self.admin_roles for role in interaction.user.roles):
             return await interaction.response.send_message("❌ No tienes rango administrativo para ejecutar baneos.", ephemeral=True)
 
+        # Configurar Hora Argentina
+        fecha_ahora = datetime.now(tz_arg)
+        fecha_str = fecha_ahora.strftime('%d/%m/%Y %H:%M')
+
         db = firestore.client()
         
         try:
             # Guardar en Firebase
             db.collection("Baneos").add({
                 "Usuario": usuario.name,
+                "UsuarioID": str(usuario.id),
                 "Moderador": interaction.user.name,
-                "Hora": datetime.now(),
-                "Motivo": motivo
+                "Fecha": fecha_str,
+                "Motivo": motivo,
+                "Duracion": duracion
             })
 
             # Ejecutar Ban en Discord
             await usuario.ban(reason=motivo)
 
             # Crear Embed
-            embed = discord.Embed(title="⛔ Usuario Baneado", color=discord.Color.red())
+            embed = discord.Embed(
+                title="⛔ Usuario Baneado", 
+                color=discord.Color.red(),
+                timestamp=fecha_ahora
+            )
             embed.set_author(name="La Nueva Metropol S.A.", icon_url="attachment://LogoPFP.png")
+            embed.set_thumbnail(url=usuario.display_avatar.url)
+
+            # Campos en Vertical
             embed.add_field(name="Usuario", value=usuario.mention, inline=False)
-            embed.add_field(name="Motivo", value=motivo, inline=False)
-            embed.add_field(name="Evidencia", value=evidencia.url if evidencia else "No proporcionada", inline=False)
+            embed.add_field(name="Motivo", value=f"```\n{motivo}\n```", inline=False)
             embed.add_field(name="Duración", value=duracion, inline=False)
+            embed.add_field(name="Evidencia", value=evidencia.url if evidencia else "No proporcionada", inline=False)
             embed.add_field(name="Administrador", value=interaction.user.mention, inline=False)
-            embed.set_footer(text=f"La Nueva Metropol S.A. | {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+            
+            embed.set_footer(text=f"La Nueva Metropol S.A. | {fecha_str}")
 
             # Enviar a canal de sanciones
             channel = interaction.guild.get_channel(1397738825609904242)
-            file = discord.File("Imgs/LogoPFP.png", filename="LogoPFP.png")
-            await channel.send(file=file, embed=embed)
+            path_imagen = "Imgs/LogoPFP.png"
             
+            if os.path.exists(path_imagen):
+                file = discord.File(path_imagen, filename="LogoPFP.png")
+                if channel:
+                    await channel.send(file=file, embed=embed)
+                else:
+                    await interaction.response.send_message("✅ Ban ejecutado, pero no se encontró el canal de logs.", ephemeral=True)
+            else:
+                if channel: await channel.send(embed=embed)
+
             await interaction.response.send_message(f"✅ Se ha baneado a {usuario.name} correctamente.", ephemeral=True)
 
+        except discord.Forbidden:
+            await interaction.response.send_message("❌ No tengo permisos suficientes para banear a este usuario.", ephemeral=True)
         except Exception as e:
             await interaction.response.send_message(f"❌ Error al ejecutar el baneo: {e}", ephemeral=True)
 
