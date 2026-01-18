@@ -1,8 +1,12 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from firebase_admin import firestore
+import os
+
+# --- CONFIGURACIÓN HORA ARGENTINA ---
+tz_arg = timezone(timedelta(hours=-3))
 
 class Kick(commands.Cog):
     def __init__(self, bot):
@@ -15,29 +19,42 @@ class Kick(commands.Cog):
         if not any(role.id in self.admin_roles for role in interaction.user.roles):
             return await interaction.response.send_message("❌ Permisos insuficientes.", ephemeral=True)
 
+        # 1. Configurar Hora Argentina
+        fecha_ahora = datetime.now(tz_arg)
+        fecha_str = fecha_ahora.strftime('%d/%m/%Y %H:%M')
+
         db = firestore.client()
 
         try:
+            # 2. Guardar en Firebase con hora argentina
             db.collection("Kicks").add({
                 "UsuarioID": str(usuario.id),
                 "Moderador": interaction.user.name,
                 "Motivo": motivo,
-                "Fecha": datetime.now()
+                "Fecha": fecha_str 
             })
 
+            # 3. Expulsar al usuario
             await usuario.kick(reason=motivo)
 
-            embed = discord.Embed(title="⛔ Usuario Kickeado", color=discord.Color.orange())
+            # --- DISEÑO DEL EMBED ---
+            embed = discord.Embed(title="⛔ Usuario Kickeado", color=discord.Color.orange(), timestamp=fecha_ahora)
             embed.set_author(name="La Nueva Metropol S.A.", icon_url="attachment://LogoPFP.png")
+            
             embed.add_field(name="Usuario", value=usuario.mention, inline=False)
             embed.add_field(name="Motivo", value=motivo, inline=False)
             embed.add_field(name="Evidencia", value=evidencia.url if evidencia else "No proporcionada", inline=False)
             embed.add_field(name="Administrador", value=interaction.user.mention, inline=False)
-            embed.set_footer(text=f"La Nueva Metropol S.A. | {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+            
+            # Footer con hora argentina
+            embed.set_footer(text=f"La Nueva Metropol S.A. | {fecha_str}")
 
+            # 4. Enviar a Logs
             channel = interaction.guild.get_channel(1397738825609904242)
             file = discord.File("Imgs/LogoPFP.png", filename="LogoPFP.png")
-            await channel.send(file=file, embed=embed)
+            
+            if channel:
+                await channel.send(file=file, embed=embed)
             
             await interaction.response.send_message(f"✅ {usuario.name} ha sido expulsado.", ephemeral=True)
             
