@@ -1,9 +1,12 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from firebase_admin import firestore
 import os
+
+# --- CONFIGURACIÓN HORA ARGENTINA ---
+tz_arg = timezone(timedelta(hours=-3))
 
 class Warns(commands.Cog):
     def __init__(self, bot):
@@ -13,69 +16,90 @@ class Warns(commands.Cog):
     @app_commands.command(name="warn", description="Warnear a un usuario")
     async def warn(self, interaction: discord.Interaction, usuario: discord.Member, motivo: str):
         if not any(role.id in self.admin_roles for role in interaction.user.roles):
-            return await interaction.response.send_message("No tienes permisos.", ephemeral=True)
+            return await interaction.response.send_message("❌ No tienes permisos.", ephemeral=True)
 
-        # Conexión a DB
         db = firestore.client()
         warns_ref = db.collection("Warns").where("UsuarioID", "==", str(usuario.id))
         docs = warns_ref.get()
         count = len(docs) + 1
 
-        # Guardado en Firebase
+        # Hora Argentina
+        fecha_ahora = datetime.now(tz_arg)
+        fecha_str = fecha_ahora.strftime('%d/%m/%Y %H:%M')
+
         db.collection("Warns").add({
             "UsuarioID": str(usuario.id),
             "UsuarioNombre": usuario.name,
             "Moderador": interaction.user.name,
             "Motivo": motivo,
-            "Fecha": datetime.now()
+            "Fecha": fecha_str
         })
 
-        # Timeout con manejo de error (por si el usuario es admin o tiene mayor rango)
         try:
             await usuario.timeout(timedelta(minutes=5), reason=f"Warn #{count}: {motivo}")
-        except Exception:
+        except:
             pass
 
-        # --- CONFIGURACIÓN DE IMAGEN Y EMBED ---
         path_imagen = "Imgs/LogoPFP.png"
-        
-        # Verificamos si la imagen existe antes de intentar mandarla
-        if not os.path.exists(path_imagen):
-            return await interaction.response.send_message(f"❌ Error: No se encontró la imagen en {path_imagen}", ephemeral=True)
+        file = discord.File(path_imagen, filename="LogoPFP.png") if os.path.exists(path_imagen) else None
 
-        # Creamos el archivo
-        file = discord.File(path_imagen, filename="LogoPFP.png")
-
-        embed = discord.Embed(title="📛 Usuario Warneado", color=discord.Color.yellow())
-        
-        # Para usar attachment en el author, el filename debe coincidir
+        embed = discord.Embed(title="📛 Usuario Warneado", color=discord.Color.yellow(), timestamp=fecha_ahora)
         embed.set_author(name="La Nueva Metropol S.A.", icon_url="attachment://LogoPFP.png")
-        
-        # Campos en VERTICAL
+        embed.set_thumbnail(url=usuario.display_avatar.url)
         embed.add_field(name="Usuario", value=usuario.mention, inline=False)
         embed.add_field(name="Moderador", value=interaction.user.mention, inline=False)
         embed.add_field(name="Motivo", value=f"```\n{motivo}\n```", inline=False)
         embed.add_field(name="Warn N°", value=str(count), inline=False)
+        embed.set_footer(text=f"La Nueva Metropol S.A. | {fecha_str}")
 
-        embed.set_footer(text=f"La Nueva Metropol S.A. | {datetime.now().strftime('%d/%m/%Y %H:%M')}")
-
-        # Canal de Logs
         channel = interaction.guild.get_channel(1397738825609904242)
-        
-        if channel:
-            # Enviamos el archivo junto con el embed al canal de logs
+        if channel and file:
             await channel.send(file=file, embed=embed)
             await interaction.response.send_message(f"✅ Warn aplicado a {usuario.name}.", ephemeral=True)
         else:
-            # Si el canal no existe, lo mandamos como respuesta
-            await interaction.response.send_message(file=file, embed=embed, ephemeral=True)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @app_commands.command(name="clearwarnings", description="Eliminar warns de un usuario")
-    async def clear(self, interaction: discord.Interaction, usuario: discord.Member, motivo: str, cantidad: int):
+    @app_commands.command(name="clearwarnings", description="Eliminar todos los warns de un usuario")
+    @app_commands.describe(usuario="Usuario al que limpiar los warns", motivo="Razón de la limpieza")
+    async def clear(self, interaction: discord.Interaction, usuario: discord.Member, motivo: str):
         if not any(role.id in self.admin_roles for role in interaction.user.roles):
-            return await interaction.response.send_message("No tienes permisos.", ephemeral=True)
+            return await interaction.response.send_message("❌ No tienes permisos para limpiar warns.", ephemeral=True)
         
-        await interaction.response.send_message("Warnings removidos de la base de datos.", ephemeral=True)
+        db = firestore.client()
+        # Buscamos todos los documentos de ese usuario
+        warns_ref = db.collection("Warns").where("UsuarioID", "==", str(usuario.id))
+        docs = warns_ref.get()
+
+        if len(docs) == 0:
+            return await interaction.response.send_message(f"El usuario {usuario.name} no tiene advertencias activas.", ephemeral=True)
+
+        # Borramos cada documento encontrado
+        deleted_count = 0
+        for doc in docs:
+            doc.reference.delete()
+            deleted_count += 1
+
+        # Embed de confirmación para los logs
+        fecha_ahora = datetime.now(tz_arg)
+        fecha_str = fecha_ahora.strftime('%d/%m/%Y %H:%M')
+        
+        embed = discord.Embed(title="✨ Advertencias Limpiadas", color=discord.Color.green(), timestamp=fecha_ahora)
+        embed.set_author(name="La Nueva Metropol S.A.", icon_url="attachment://LogoPFP.png")
+        embed.add_field(name="Usuario", value=usuario.mention, inline=False)
+        embed.add_field(name="Cantidad Borrada", value=str(deleted_count), inline=False)
+        embed.add_field(name="Motivo", value=f"```\n{motivo}\n```", inline=False)
+        embed.add_field(name="Administrador", value=interaction.user.mention, inline=False)
+        embed.set_footer(text=f"La Nueva Metropol S.A. | {fecha_str}")
+
+        channel = interaction.guild.get_channel(1397738825609904242)
+        path_imagen = "Imgs/LogoPFP.png"
+        
+        if channel and os.path.exists(path_imagen):
+            file = discord.File(path_imagen, filename="LogoPFP.png")
+            await channel.send(file=file, embed=embed)
+        
+        await interaction.response.send_message(f"✅ Se han eliminado {deleted_count} advertencias de **{usuario.name}**.", ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(Warns(bot))
+    
