@@ -16,62 +16,71 @@ if firebase_config:
         cred = credentials.Certificate(cred_dict)
         firebase_admin.initialize_app(cred)
         db = firestore.client()
-        print("✅ Firebase Conectado (FIREBASE_CONFIG)")
+        print("✅ Firebase Conectado correctamente.")
     except Exception as e:
-        print(f"❌ Error Firebase: {e}")
+        print(f"❌ Error al conectar Firebase: {e}")
 
 # --- CONFIGURACIÓN DEL BOT ---
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
-bot.db = db
+bot.db = db # Compartimos la DB para que los comandos la usen
 
-# --- CARGA DINÁMICA DE COMANDOS ---
+# --- CARGA DE EXTENSIONES (Carpetas) ---
 async def load_extensions():
-    # Solo cargamos archivos de estas carpetas
     for folder in ['Comandos', 'Interacciones']:
         if os.path.exists(folder):
             for filename in os.listdir(folder):
                 if filename.endswith('.py'):
                     try:
+                        # Evitamos cargar archivos duplicados o temporales
                         await bot.load_extension(f'{folder}.{filename[:-3]}')
-                        print(f'✅ Extensión cargada: {filename}')
+                        print(f'✅ Extensión cargada: {folder}/{filename}')
                     except Exception as e:
                         print(f'❌ Error cargando {filename}: {e}')
 
 @bot.event
 async def on_ready():
-    # Status del bot
+    # Establecer Status
     activity = discord.Activity(type=discord.ActivityType.watching, name="La Nueva Metropol S.A.")
     await bot.change_presence(status=discord.Status.online, activity=activity)
     
-    # Sincronización (Limpia lo viejo y pone lo nuevo)
+    # Sincronización inicial rápida
     try:
         await bot.tree.sync()
         print(f"🚀 Bot Online: {bot.user} | Comandos Sincronizados")
     except Exception as e:
-        print(f"❌ Error Sync: {e}")
+        print(f"❌ Error en Sync inicial: {e}")
 
-# --- COMANDO DE EMERGENCIA PARA LIMPIAR CACHÉ ---
+# --- COMANDO PARA LIMPIAR DUPLICADOS ---
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def sync(ctx):
-    """Escribe !sync si ves comandos duplicados"""
-    await ctx.send("♻️ Limpiando caché de comandos y re-sincronizando...")
+    """Limpia la caché de comandos y resincroniza todo"""
+    await ctx.send("♻️ **Limpiando comandos duplicados...** esto puede tardar unos segundos.")
     try:
-        # Borra los comandos locales del servidor antes de subir los nuevos
-        bot.tree.clear(guild=ctx.guild)
+        # 1. Limpia los comandos del árbol interno
+        bot.tree.clear_commands(guild=ctx.guild)
+        
+        # 2. Sincroniza (esto pisa cualquier comando viejo en el servidor)
         await bot.tree.sync(guild=ctx.guild)
-        # Sincroniza los comandos globales
-        await bot.tree.sync()
-        await ctx.send("✅ Limpieza completada. Si siguen duplicados, reiniciá tu Discord (Ctrl+R).")
+        await bot.tree.sync() # Sincronización global
+        
+        await ctx.send("✅ **Limpieza completada.**\n⚠️ **IMPORTANTE:** Si seguís viendo duplicados, presioná `Ctrl + R` en PC o reiniciá la app en el celular.")
     except Exception as e:
-        await ctx.send(f"❌ Falló la limpieza: {e}")
+        await ctx.send(f"❌ Error durante la sincronización: {e}")
 
-# --- INICIO ---
+# --- ARRANQUE DEL BOT ---
 async def main():
     async with bot:
         await load_extensions()
-        await bot.start(os.getenv("DISCORD_TOKEN"))
+        token = os.getenv("DISCORD_TOKEN")
+        if token:
+            await bot.start(token)
+        else:
+            print("❌ ERROR: No se encontró el DISCORD_TOKEN en los Secrets.")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass
