@@ -1,46 +1,55 @@
 import discord
 from discord import app_commands
+from discord.ext import commands
 from datetime import datetime
-import firebase_admin
 from firebase_admin import firestore
 
-class BanModal(discord.ui.Modal, title='Baneo de Usuario'):
-    motivo = discord.ui.TextInput(label='Motivo', style=discord.TextStyle.paragraph)
-    duracion = discord.ui.TextInput(label='Duración', placeholder='Ej: 7 días o Permanente')
+class Ban(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+        # Roles Administrativos
+        self.admin_roles = [1390152252169125992, 1445570965852520650, 1397020690435149824]
 
-    def __init__(self, member, evidencia=None):
-        super().__init__()
-        self.member = member
-        self.evidencia = evidencia
+    @app_commands.command(name="ban", description="Banear a un usuario de La Nueva Metropol S.A.")
+    @app_commands.describe(usuario="El chofer o cliente a banear", motivo="Razón de la sanción", duracion="Tiempo del baneo", evidencia="Foto o video de la falta")
+    async def ban(self, interaction: discord.Interaction, usuario: discord.Member, motivo: str, duracion: str, evidencia: discord.Attachment = None):
+        # Verificar permisos
+        if not any(role.id in self.admin_roles for role in interaction.user.roles):
+            return await interaction.response.send_message("❌ No tienes rango administrativo para ejecutar baneos.", ephemeral=True)
 
-    async def on_submit(self, interaction: discord.Interaction):
         db = firestore.client()
         
-        # Guardar en Firebase
-        data = {
-            'Usuario': str(self.member.id),
-            'Moderador': str(interaction.user.id),
-            'Motivo': self.motivo.value,
-            'Fecha': datetime.now(),
-            'Tipo': 'Ban'
-        }
-        db.collection('Baneos').add(data)
+        try:
+            # Guardar en Firebase
+            db.collection("Baneos").add({
+                "Usuario": usuario.name,
+                "Moderador": interaction.user.name,
+                "Hora": datetime.now(),
+                "Motivo": motivo
+            })
 
-        # Banear en Discord
-        await self.member.ban(reason=self.motivo.value)
+            # Ejecutar Ban en Discord
+            await usuario.ban(reason=motivo)
 
-        # Embed de respuesta
-        embed = discord.Embed(title="⛔ Usuario Baneado", color=discord.Color.red())
-        embed.set_author(name="La Nueva Metropol S.A.", icon_url="attachment://LogoPFP.png")
-        embed.add_field(name="Usuario", value=self.member.mention)
-        embed.add_field(name="Motivo", value=self.motivo.value)
-        embed.add_field(name="Duración", value=self.duracion.value)
-        if self.evidencia:
-            embed.add_field(name="Evidencia", value="Adjunta en mensaje")
-        
-        embed.set_footer(text=f"La Nueva Metropol S.A. | {datetime.now().strftime('%d/%m/%Y %H:%M')}")
-        
-        canal_sanciones = interaction.guild.get_channel(1397738825609904242)
-        file = discord.File("Imgs/LogoPFP.png", filename="LogoPFP.png")
-        await canal_sanciones.send(file=file, embed=embed)
-        await interaction.response.send_message("Usuario baneado con éxito.", ephemeral=True)
+            # Crear Embed
+            embed = discord.Embed(title="⛔ Usuario Baneado", color=discord.Color.red())
+            embed.set_author(name="La Nueva Metropol S.A.", icon_url="attachment://LogoPFP.png")
+            embed.add_field(name="Usuario", value=usuario.mention, inline=False)
+            embed.add_field(name="Motivo", value=motivo, inline=False)
+            embed.add_field(name="Evidencia", value=evidencia.url if evidencia else "No proporcionada", inline=False)
+            embed.add_field(name="Duración", value=duracion, inline=False)
+            embed.add_field(name="Administrador", value=interaction.user.mention, inline=False)
+            embed.set_footer(text=f"La Nueva Metropol S.A. | {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+
+            # Enviar a canal de sanciones
+            channel = interaction.guild.get_channel(1397738825609904242)
+            file = discord.File("Imgs/LogoPFP.png", filename="LogoPFP.png")
+            await channel.send(file=file, embed=embed)
+            
+            await interaction.response.send_message(f"✅ Se ha baneado a {usuario.name} correctamente.", ephemeral=True)
+
+        except Exception as e:
+            await interaction.response.send_message(f"❌ Error al ejecutar el baneo: {e}", ephemeral=True)
+
+async def setup(bot):
+    await bot.add_cog(Ban(bot))
