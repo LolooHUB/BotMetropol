@@ -2,9 +2,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from datetime import datetime
-from firebase_admin import firestore
 
-# Definimos la vista afuera para que no interfiera con el registro del comando
+# Definimos la vista de botones
 class AuxilioButtons(discord.ui.View):
     def __init__(self, chofer_id, lugar):
         super().__init__(timeout=None)
@@ -25,35 +24,40 @@ class AuxilioButtons(discord.ui.View):
         await interaction.response.send_message("Solicitud rechazada.", ephemeral=True)
         await interaction.message.delete()
 
+# Definimos la clase del comando
 class Auxiliar(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # Cambiamos el nombre interno de la función para que no choque con el nombre del comando
-    @app_commands.command(name="auxilio", description="Solicitar asistencia mecánica Metropol")
-    async def solicitar_auxilio(self, interaction: discord.Interaction, chofer: discord.Member, lugar: str, motivo: str, foto: discord.Attachment):
-        """Comando para solicitar auxilio"""
+    @app_commands.command(name="auxilio", description="Pedir asistencia mecanica")
+    async def auxilio(self, interaction: discord.Interaction, chofer: discord.Member, lugar: str, motivo: str, foto: discord.Attachment):
+        """Comando de auxilio"""
         
-        # Validaciones movidas aquí adentro para que no bloqueen el registro del comando
+        # Validamos el canal por ID
         if interaction.channel_id != 1390464495725576304:
-            return await interaction.response.send_message("Usa el canal de auxilio.", ephemeral=True)
+            return await interaction.response.send_message("Usa este comando en el canal de auxilio.", ephemeral=True)
 
-        # Crear el mensaje
         embed = discord.Embed(title="📛 Solicitud de Auxilio", color=discord.Color.orange())
-        embed.set_author(name="La Nueva Metropol S.A.", icon_url="attachment://LogoPFP.png")
+        embed.set_author(name="La Nueva Metropol S.A.")
         embed.add_field(name="Chofer", value=chofer.mention)
         embed.add_field(name="Lugar", value=lugar)
         embed.add_field(name="Motivo", value=motivo)
-        embed.set_image(url=foto.url)
-        embed.set_footer(text=f"La Nueva Metropol S.A. | {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+        
+        if foto:
+            embed.set_image(url=foto.url)
+            
+        embed.set_footer(text=f"Metropol S.A. | {datetime.now().strftime('%H:%M')}")
 
+        # Canal de destino
         canal_destino = interaction.guild.get_channel(1461926580078252054)
-        file = discord.File("Imgs/LogoPFP.png", filename="LogoPFP.png")
         
-        view = AuxilioButtons(chofer.id, lugar)
-        await canal_destino.send(content="<@&1390152252143964268> NUEVA SOLICITUD", file=file, embed=embed, view=view)
-        
-        await interaction.response.send_message("✅ Solicitud enviada.", ephemeral=True)
+        if canal_destino:
+            view = AuxilioButtons(chofer.id, lugar)
+            await canal_destino.send(content="<@&1390152252143964268> NUEVA SOLICITUD", embed=embed, view=view)
+            await interaction.response.send_message("✅ Solicitud enviada.", ephemeral=True)
+        else:
+            await interaction.response.send_message("❌ Error: No se encontró el canal de destino.", ephemeral=True)
 
+# Función de carga obligatoria
 async def setup(bot):
     await bot.add_cog(Auxiliar(bot))
