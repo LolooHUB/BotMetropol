@@ -5,70 +5,70 @@ import os
 import json
 import firebase_admin
 from firebase_admin import credentials, firestore
+from datetime import datetime
 
-# --- FIREBASE ---
-cred_json = os.getenv("FIREBASE_CONFIG")
-if cred_json:
-    try:
-        cred_dict = json.loads(cred_json)
-        cred = credentials.Certificate(cred_dict)
-        firebase_admin.initialize_app(cred)
-    except Exception as e:
-        print(f"Error Firebase: {e}")
-
-# --- BOT CONFIG ---
-intents = discord.Intents.all() # Activamos todos para evitar problemas de permisos
+# --- CONFIGURACIÓN ---
+intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# --- CARGA DE COMANDOS ---
-async def load_extensions():
+# --- COMANDO AUXILIO (INTEGRADO DIRECTO) ---
+class AuxilioButtons(discord.ui.View):
+    def __init__(self, chofer_id, lugar):
+        super().__init__(timeout=None)
+        self.chofer_id = chofer_id
+        self.lugar = lugar
+
+    @discord.ui.button(label="En Camino", style=discord.ButtonStyle.orange, emoji="🚛")
+    async def en_camino(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message(f"Asistencia en camino.", ephemeral=True)
+
+    @discord.ui.button(label="Finalizado", style=discord.ButtonStyle.green, emoji="✅")
+    async def finalizado(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message("Auxilio finalizado.", ephemeral=True)
+        await interaction.message.delete()
+
+    @discord.ui.button(label="Rechazar", style=discord.ButtonStyle.red, emoji="🛑")
+    async def rechazar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message("Solicitud rechazada.", ephemeral=True)
+        await interaction.message.delete()
+
+@bot.tree.command(name="auxilio", description="Pedir asistencia mecanica Metropol")
+async def auxilio(interaction: discord.Interaction, chofer: discord.Member, lugar: str, motivo: str, foto: discord.Attachment):
+    if interaction.channel_id != 1390464495725576304:
+        return await interaction.response.send_message("Usa el canal de auxilio.", ephemeral=True)
+    
+    embed = discord.Embed(title="📛 Solicitud de Auxilio", color=discord.Color.orange())
+    embed.add_field(name="Chofer", value=chofer.mention)
+    embed.add_field(name="Lugar", value=lugar)
+    embed.add_field(name="Motivo", value=motivo)
+    embed.set_image(url=foto.url)
+    
+    canal_destino = interaction.guild.get_channel(1461926580078252054)
+    if canal_destino:
+        view = AuxilioButtons(chofer.id, lugar)
+        await canal_destino.send(content="<@&1390152252143964268> NUEVA SOLICITUD", embed=embed, view=view)
+        await interaction.response.send_message("✅ Solicitud enviada.", ephemeral=True)
+
+# --- CARGA DE OTROS COMANDOS ---
+@bot.event
+async def setup_hook():
     for folder in ['Comandos', 'Interacciones']:
         if os.path.exists(folder):
             for filename in os.listdir(folder):
-                if filename.endswith('.py'):
+                if filename.endswith('.py') and filename != 'auxiliar.py': # Ignoramos el viejo
                     try:
-                        # Evitamos recargar si ya está cargado
-                        if f"{folder}.{filename[:-3]}" not in bot.extensions:
-                            await bot.load_extension(f'{folder}.{filename[:-3]}')
+                        await bot.load_extension(f'{folder}.{filename[:-3]}')
                     except Exception as e:
-                        print(f'Error cargando {filename}: {e}')
+                        print(f'Error: {e}')
+    # Sincronización Forzada
+    await bot.tree.sync()
 
-@bot.event
-async def on_ready():
-    await bot.change_presence(activity=discord.Activity(
-        type=discord.ActivityType.watching, 
-        name="La Nueva Metropol S.A."
-    ))
-    print(f'✅ Bot conectado: {bot.user}')
-
-# --- COMANDO SECRETO PARA ACTIVAR LOS "/" ---
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def sync(ctx):
-    """Escribe !sync en el chat para que aparezcan los comandos /"""
-    await ctx.send("🔄 Intentando sincronizar comandos de barra...")
-    try:
-        # Esto sincroniza los comandos con el servidor actual
-        bot.tree.copy_global_to(guild=ctx.guild)
-        synced = await bot.tree.sync(guild=ctx.guild)
-        await ctx.send(f"✅ ¡Éxito! Se sincronizaron {len(synced)} comandos. Reinicia tu Discord (Ctrl+R) para verlos.")
-    except Exception as e:
-        await ctx.send(f"❌ Error al sincronizar: {e}")
-
-# --- RESPUESTA A PINGS ---
-@bot.event
-async def on_message(message):
-    if message.author.bot: return
-    if bot.user.mentioned_in(message):
-        await message.channel.send("¿Necesitas ayuda?, hace !ayuda para mas.")
-    await bot.process_commands(message)
+    await bot.tree.sync()
+    await ctx.send("✅ Sincronizado.")
 
 # --- INICIO ---
-async def setup():
-    async with bot:
-        await load_extensions()
-        await bot.start(os.getenv("DISCORD_TOKEN"))
-
-import asyncio
-if __name__ == "__main__":
-    asyncio.run(setup())
+token = os.getenv("DISCORD_TOKEN")
+bot.run(token)
