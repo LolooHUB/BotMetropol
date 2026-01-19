@@ -1,8 +1,12 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from firebase_admin import firestore
+import os
+
+# --- CONFIGURACIÓN HORA ARGENTINA ---
+tz_arg = timezone(timedelta(hours=-3))
 
 class InfoUser(commands.Cog):
     def __init__(self, bot):
@@ -12,30 +16,43 @@ class InfoUser(commands.Cog):
     @app_commands.command(name="info-user", description="Ver historial de un usuario")
     async def info_user(self, interaction: discord.Interaction, usuario: discord.Member):
         if not any(role.id in self.admin_roles for role in interaction.user.roles):
-            return await interaction.response.send_message("No tienes permisos.", ephemeral=True)
+            return await interaction.response.send_message("❌ No tienes permisos.", ephemeral=True)
 
         db = firestore.client()
         
         # Consultas a Firebase
         warns = len(db.collection("Warns").where("UsuarioID", "==", str(usuario.id)).get())
-        kicked = "S" if len(db.collection("Kicks").where("UsuarioID", "==", str(usuario.id)).get()) > 0 else "N"
+        kicked_docs = db.collection("Kicks").where("UsuarioID", "==", str(usuario.id)).get()
+        kicked = "SÍ" if len(kicked_docs) > 0 else "NO"
         
-        # Tiempo en el servidor
-        tiempo_srv = datetime.now() - usuario.joined_at.replace(tzinfo=None)
+        # Tiempo en el servidor (Ajustado a UTC para evitar errores de offset)
+        ahora_utc = datetime.now(timezone.utc)
+        tiempo_srv = ahora_utc - usuario.joined_at
         dias = tiempo_srv.days
 
-        embed = discord.Embed(title="📛 UserInfo", color=discord.Color.yellow())
-        embed.set_author(name="La Nueva Metropol S.A.", icon_url="attachment://LogoPFP.png")
-        embed.add_field(name="Usuario", value=usuario.mention, inline=False)
-        embed.add_field(name="Warns", value=str(warns), inline=True)
-        embed.add_field(name="Ban", value="N", inline=True) # Si está en el sv, no está baneado actualmente
-        embed.add_field(name="Kickeado alguna vez?", value=kicked, inline=True)
-        embed.add_field(name="Tiempo en Servidor", value=f"{dias} días", inline=False)
-        embed.set_footer(text=f"La Nueva Metropol S.A. | {datetime.now().strftime('%d/%m/%Y %H:%M')}")
-        embed.set_image(url="attachment://Banner.png")
+        # Hora Argentina para el footer
+        fecha_arg = datetime.now(tz_arg)
+        fecha_str = fecha_arg.strftime('%d/%m/%Y %H:%M')
 
-        file = discord.File("Imgs/LogoPFP.png", filename="LogoPFP.png")
-        await interaction.response.send_message(file=file, embed=embed)
+        # --- CREAR EMBED ---
+        embed = discord.Embed(title="📊 Historial de Usuario", color=discord.Color.blue(), timestamp=fecha_arg)
+        embed.set_author(name="La Nueva Metropol S.A.", icon_url="attachment://LogoPFP.png")
+        embed.set_thumbnail(url=usuario.display_avatar.url)
+        
+        embed.add_field(name="👤 Usuario", value=usuario.mention, inline=False)
+        embed.add_field(name="⚠️ Warns Totales", value=f"**{warns}**", inline=True)
+        embed.add_field(name="👢 Kickeado anteriormente", value=f"**{kicked}**", inline=True)
+        embed.add_field(name="📅 Antigüedad", value=f"**{dias} días** en el servidor", inline=False)
+        
+        # Imagen Banner
+        embed.set_image(url="attachment://Banner.png")
+        embed.set_footer(text=f"Consulta realizada por: {interaction.user.name} | {fecha_str}")
+
+        # --- PREPARACIÓN DE ARCHIVOS ---
+        file1 = discord.File("Imgs/LogoPFP.png", filename="LogoPFP.png")
+        file2 = discord.File("Imgs/Banner.png", filename="Banner.png")
+
+        await interaction.response.send_message(files=[file1, file2], embed=embed)
 
 async def setup(bot):
     await bot.add_cog(InfoUser(bot))
