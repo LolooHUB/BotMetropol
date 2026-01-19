@@ -48,7 +48,7 @@ class Ban(commands.Cog):
                 timestamp=fecha_ahora
             )
             embed.set_author(name="La Nueva Metropol S.A.", icon_url="attachment://LogoPFP.png")
-            embed.set_thumbnail(url=usuario.display_avatar.url)
+            embed.set_image(url="attachment://Banner.png")
 
             # Campos en Vertical
             embed.add_field(name="Usuario", value=usuario.mention, inline=False)
