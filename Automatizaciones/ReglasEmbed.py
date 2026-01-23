@@ -73,7 +73,7 @@ class ReglasAutomatizacion(commands.Cog):
                     description="Todo reclamo se canaliza con respeto.",
                     color=0x95A5A6
                 )
-                e4.add_field(name="S1 - Cuestionamiento", value="Las decisiones del Staff pueden ser cuestionadas. Si no estás de acuerdo, plantealo educadamente.", inline=False)
+                e4.add_field(name="S1 - Cuestionamiento", value="Las decisiones del Staff pueden ser cuestionadas. Si no estás de acuerdo, plantealo educadamente en el <#1464064701410447411>.", inline=False)
                 e4.add_field(name="S2 - Verificación", value="Tenés 7 días para verificar tu cuenta o serás expulsado por seguridad.", inline=False)
                 e4.set_image(url="attachment://Banner.png")
                 e4.set_footer(text="Reaccioná con ✅ para aceptar e ingresar.")
