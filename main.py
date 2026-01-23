@@ -23,20 +23,30 @@ if firebase_config:
 # --- CONFIGURACIÓN DEL BOT ---
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
-bot.db = db # Compartimos la DB para que los comandos la usen
+bot.db = db  # Compartimos la DB para que los Cogs la usen
 
-# --- CARGA DE EXTENSIONES (Carpetas) ---
+# --- CARGA DE EXTENSIONES RECURSIVA ---
+# Esto permite leer Comandos/Staff, Comandos/Personal, etc.
 async def load_extensions():
-    for folder in ['Comandos', 'Interacciones', 'Automatizaciones']:
-        if os.path.exists(folder):
-            for filename in os.listdir(folder):
-                if filename.endswith('.py'):
-                    try:
-                        # Evitamos cargar archivos duplicados o temporales
-                        await bot.load_extension(f'{folder}.{filename[:-3]}')
-                        print(f'✅ Extensión cargada: {folder}/{filename}')
-                    except Exception as e:
-                        print(f'❌ Error cargando {filename}: {e}')
+    # Carpetas principales a escanear
+    folders = ['Comandos', 'Interacciones', 'Automatizaciones']
+    
+    for base_folder in folders:
+        if os.path.exists(base_folder):
+            # os.walk recorre todas las subcarpetas de forma profunda
+            for root, dirs, files in os.walk(base_folder):
+                for filename in files:
+                    if filename.endswith('.py') and not filename.startswith('__'):
+                        # Construye la ruta del módulo para Discord.py
+                        # Ejemplo: Comandos/Staff/ban.py -> Comandos.Staff.ban
+                        path = os.path.join(root, filename)
+                        extension_name = os.path.splitext(path)[0].replace(os.sep, '.')
+                        
+                        try:
+                            await bot.load_extension(extension_name)
+                            print(f'✅ Extensión cargada: {extension_name}')
+                        except Exception as e:
+                            print(f'❌ Error cargando {extension_name}: {e}')
 
 @bot.event
 async def on_ready():
@@ -65,7 +75,7 @@ async def sync(ctx):
         await bot.tree.sync(guild=ctx.guild)
         await bot.tree.sync() # Sincronización global
         
-        await ctx.send("✅ **Limpieza completada.**\n⚠️ **IMPORTANTE:** Si seguís viendo duplicados, presioná `Ctrl + R` en PC o reiniciá la app en el celular.")
+        await ctx.send("✅ **Limpieza completada.**\n⚠️ **IMPORTANTE:** Si seguís viendo duplicados, presioná `Ctrl + R` en PC o reiniciá la app.")
     except Exception as e:
         await ctx.send(f"❌ Error durante la sincronización: {e}")
 
