@@ -43,7 +43,6 @@ class ReglasAutomatizacion(commands.Cog):
                     color=0x0055AA
                 )
                 e1.set_author(name="Control de Personal", icon_url="attachment://LogoPFP.png")
-                e1.set_thumbnail(url="attachment://LogoPFP.png")
                 e1.add_field(name="G1 - Respeto General", value="Prohibido el bardo e insultos. La toxicidad se corta de raíz.", inline=False)
                 e1.add_field(name="G2 - Escritura", value="Mínimo de ortografía. Si no se entiende lo que escribís, el mensaje será borrado.", inline=True)
                 e1.add_field(name="G3 - Multicuentas", value="Prohibido el uso de Alts. Una cuenta por persona.", inline=True)
