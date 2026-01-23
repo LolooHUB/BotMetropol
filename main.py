@@ -27,7 +27,7 @@ bot.db = db # Compartimos la DB para que los comandos la usen
 
 # --- CARGA DE EXTENSIONES (Carpetas) ---
 async def load_extensions():
-    for folder in ['Comandos', 'Interacciones']:
+    for folder in ['Comandos', 'Interacciones', 'Automatizaciones']:
         if os.path.exists(folder):
             for filename in os.listdir(folder):
                 if filename.endswith('.py'):
