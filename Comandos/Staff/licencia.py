@@ -46,8 +46,9 @@ class LicenciaModal(discord.ui.Modal, title='Registro de Licencia Habilitante'):
         if edad < 13:
             canal_staff = self.bot.get_channel(self.CANAL_STAFF_ID)
             if canal_staff:
-                # Formato de texto plano solicitado
+                # Formato de texto plano con ping a everyone
                 reporte = (
+                    f"@everyone\n"
                     f"⚠️ **EL USUARIO {interaction.user.mention} ES MENOR DE 13 AÑOS**\n"
                     "```yaml\n"
                     f"Discord_User\n\"{data['Discord_User']}\"\n(string)\n"
