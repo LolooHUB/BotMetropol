@@ -1,12 +1,12 @@
 import discord
 from discord.ext import commands
 import asyncio
-import time
+import datetime
+import pytz
 
 class ReglasAutomatizacion(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-
         self.RULES_CHANNEL_ID = 1390152260578967556
 
         # Roles
@@ -16,47 +16,30 @@ class ReglasAutomatizacion(commands.Cog):
             1465472529974952281,
             1390152252143964262
         ]
+        self.UNVERIFIED_ROLE_ID = 1465472198759284868
 
         self.EMOJI = "✅"
+        self.reglas_message_id = None
 
     # ─────────────────────────────────────────────
-    # DB HELPERS
-    # ─────────────────────────────────────────────
-    def now(self):
-        return {
-            "fecha": time.strftime("%Y-%m-%d"),
-            "hora": time.strftime("%H:%M:%S")
-        }
-
-    def db_set(self, collection, data):
-        if not hasattr(self.bot, "db") or self.bot.db is None:
-            return
-        try:
-            self.bot.db.collection(collection).document(str(data["user_id"])).set(data)
-        except Exception as e:
-            print(f"❌ Error DB: {e}")
-
-    # ─────────────────────────────────────────────
-    # 1️⃣ ROL AUTOMÁTICO AL ENTRAR
+    # 1️⃣ Rol automático al entrar
     # ─────────────────────────────────────────────
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
-        role = member.guild.get_role(self.AUTO_ROLE_ID)
+        role = member.guild.get_role(self.UNVERIFIED_ROLE_ID)
         if role:
             try:
                 await member.add_roles(role, reason="Ingreso al servidor")
             except Exception as e:
                 print(f"❌ Error rol automático: {e}")
 
-        self.db_set("NoVerificados", {
-            "user_id": member.id,
-            "username": member.name,
-            "motivo": "Ingreso al servidor",
-            **self.now()
-        })
+            # Limitar visibilidad de canales excepto reglas y Bloxlink
+            for ch in member.guild.channels:
+                if ch.id not in [self.RULES_CHANNEL_ID, 1465472097949192315]:
+                    await ch.set_permissions(role, view_channel=False)
 
     # ─────────────────────────────────────────────
-    # 2️⃣ REGLAS + EMBEDS (NO SE BORRA NADA)
+    # 2️⃣ Reglas + Embeds
     # ─────────────────────────────────────────────
     @commands.Cog.listener()
     async def on_ready(self):
@@ -87,6 +70,7 @@ class ReglasAutomatizacion(commands.Cog):
             e2.add_field(name="A3 - Mensajes Privados", value="No satures los MD de los desarrolladores.", inline=False)
             e2.add_field(name="A4 - Difamación", value="Cualquier intento de dañar la imagen será sancionado.", inline=False)
             e2.add_field(name="A5 - Comercio", value="Prohibida la venta de archivos ajenos.", inline=False)
+            e2.add_field(name="A6 - Polémicas y acusaciones", value="Cualquier tipo de polémica generada, acusación, o decirle 'filtra' a la empresa será PENALIZADO y DESMENTIDO.", inline=False)
             e2.set_footer(text="⚖️ Sanción: PBAN o Warn.")
 
             # ================= E3 =================
@@ -107,60 +91,54 @@ class ReglasAutomatizacion(commands.Cog):
             e4.add_field(name="P5 - Rol", value="Respeto y profesionalismo.", inline=False)
             e4.set_footer(text="⚖️ Sanción: Warn o Expulsión.")
 
-            # ================= E5 (BANNER) =================
-            file_banner = discord.File("Imgs/Banner.png", filename="Banner.png")
+            # ================= E5 =================
             e5 = discord.Embed(title="🛡️ S - STAFF Y DERECHO A APELACIÓN", color=0x95A5A6)
             e5.add_field(name="S1 - Integridad", value="Prohibido el abuso de poder.", inline=False)
             e5.add_field(name="S2 - Apelación", value="Plantealo en <#1464064701410447411>.", inline=False)
             e5.add_field(name="S3 - Privacidad", value="Tickets confidenciales.", inline=False)
             e5.add_field(name="S4 - Jerarquía", value="Escalá con un superior.", inline=False)
-            e5.add_field(name="S5 - Soporte", value="Abrí ticket si necesitás ayuda.", inline=False)
-            e5.set_image(url="attachment://Banner.png")
-            e5.set_footer(text="✅ Reaccioná para ingresar | Sanción Staff: PBAN, Kick o Warn.")
+            e5.add_field(name="S5 - Soporte", value="Abrí ticket en <#1390152260578967559> si necesitás ayuda.", inline=False)
+            e5.set_footer(text="⚖️ Sanciones posibles: PBAN, Kick o Warn.")
 
-            # ================= E6 (NUEVO) =================
+            # ================= E6 (banner + verificación) =================
             file_banner = discord.File("Imgs/Banner.png", filename="Banner.png")
             e6 = discord.Embed(
-                title="✅ VERIFICACIÓN DE INGRESO",
+                title="VERIFICACIÓN DE INGRESO",
                 description=(
-                    "Para acceder al servidor:\n\n"
-                    "1️⃣ Leé todas las reglas\n"
-                    "2️⃣ Verificate con **Bloxlink**\n"
-                    "3️⃣ Reaccioná con ✅\n\n"
-                    "⚠️ Sin Bloxlink no podés ingresar."
+                    "Pasos obligatorios para ingresar al servidor:\n"
+                    "1. Leer todas las reglas anteriores\n"
+                    "2. Verificarte con Bloxlink en <#1465472097949192315>\n"
+                    "3. Reaccionar a este mensaje para completar la verificación"
                 ),
                 color=0x2ECC71
             )
-            e6.set_footer(text="Sistema automático de verificación")
-            e6.set_image(url="attachment://Banner.png")
+            e6.set_footer(text=f"Reaccioná para verificar | {self.now_argentina()['fecha']} {self.now_argentina()['hora']}")
 
+            # ──────────────────────────────
             embeds = [e1, e2, e3, e4, e5, e6]
-
             for i, embed in enumerate(embeds):
                 if i < len(mensajes_viejos):
-                    if i == 4:
+                    if i == 5:
                         await mensajes_viejos[i].edit(embed=embed, attachments=[file_banner])
+                        self.reglas_message_id = mensajes_viejos[i].id
                     else:
                         await mensajes_viejos[i].edit(embed=embed)
                 else:
-                    if i == 4:
+                    if i == 5:
                         msg = await channel.send(file=file_banner, embed=embed)
                         await msg.add_reaction(self.EMOJI)
-                    elif i == 5:
-                        msg = await channel.send(embed=embed)
-                        await msg.add_reaction(self.EMOJI)
+                        self.reglas_message_id = msg.id
                     else:
                         await channel.send(embed=embed)
-
                 await asyncio.sleep(0.4)
 
-            print("✅ Reglas + verificación sincronizadas")
+            print("✅ Reglas + Verificación sincronizadas")
 
         except Exception as e:
             print(f"❌ Error ReglasAutomatizacion: {e}")
 
     # ─────────────────────────────────────────────
-    # 3️⃣ VERIFICACIÓN POR REACCIÓN
+    # Verificación por reacción
     # ─────────────────────────────────────────────
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload):
@@ -168,34 +146,39 @@ class ReglasAutomatizacion(commands.Cog):
             return
         if payload.user_id == self.bot.user.id:
             return
+        if payload.message_id != self.reglas_message_id:
+            return
 
         guild = self.bot.get_guild(payload.guild_id)
         member = guild.get_member(payload.user_id)
         if not member:
             return
 
-        if guild.get_role(self.BLOXLINK_ROLE_ID) not in member.roles:
-            self.db_set("NoVerificados", {
-                "user_id": member.id,
-                "username": member.name,
-                "motivo": "Intentó verificar sin Bloxlink",
-                **self.now()
-            })
+        blox_role = guild.get_role(self.BLOXLINK_ROLE_ID)
+        if blox_role not in member.roles:
             return
 
-        auto_role = guild.get_role(self.AUTO_ROLE_ID)
-        if auto_role in member.roles:
-            await member.remove_roles(auto_role)
+        # Quita rol "No verificado"
+        unverified_role = guild.get_role(self.UNVERIFIED_ROLE_ID)
+        if unverified_role in member.roles:
+            await member.remove_roles(unverified_role)
 
-        roles = [guild.get_role(r) for r in self.REGLAS_ROLE_IDS if guild.get_role(r)]
-        await member.add_roles(*roles, reason="Aceptó reglas")
+        # Da roles de reglas
+        reglas_roles = [guild.get_role(r) for r in self.REGLAS_ROLE_IDS]
+        await member.add_roles(*reglas_roles, reason="Aceptó reglas y verificó Roblox")
 
-        self.db_set("Verificados", {
-            "user_id": member.id,
-            "username": member.name,
-            "estado": "verificado",
-            **self.now()
-        })
+        # Permite ver todos los canales automáticamente si cumple pasos
+        for ch in guild.channels:
+            if unverified_role in ch.overwrites:
+                await ch.set_permissions(unverified_role, view_channel=None)
+
+    # ─────────────────────────────────────────────
+    # Helper: Hora Argentina
+    # ─────────────────────────────────────────────
+    def now_argentina(self):
+        tz = pytz.timezone("America/Argentina/Buenos_Aires")
+        now = datetime.datetime.now(tz)
+        return {"fecha": now.strftime("%d/%m/%Y"), "hora": now.strftime("%H:%M:%S")}
 
 async def setup(bot):
     await bot.add_cog(ReglasAutomatizacion(bot))
