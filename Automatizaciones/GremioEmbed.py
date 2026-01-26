@@ -1,167 +1,161 @@
-import os
-import json
 import discord
 from discord.ext import commands
 import datetime
 from zoneinfo import ZoneInfo
 
-import firebase_admin
-from firebase_admin import credentials, firestore
+class GremioEmbed(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+        self.db = bot.db
 
-# ================== CONFIG ==================
-DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
-FIREBASE_CONFIG = os.getenv("FIREBASE_CONFIG")
+        self.CANAL_ANUNCIOS_ID = 1465462294824882258
+        self.CANAL_COMUNICACION_ID = 1464064701410447411
 
-CANAL_ANUNCIOS_ID = 1465462294824882258
-CANAL_COMUNICACION_ID = 1464064701410447411
+        self.ROL_DIRECTIVOS_ID = 1397020690435149824
+        self.ROL_GREMIO_ID = 1445835728285208769
 
-ROL_DIRECTIVOS_ID = 1397020690435149824
-ROL_GREMIO_ID = 1445835728285208769
+        self.BANNER_PATH = "Imgs/BannerGremio.png"
 
-BANNER_PATH = "Imgs/BannerGremio.png"
+        # View persistente
+        bot.add_view(self.GremioView(self))
 
-# ================= FIREBASE =================
-if not firebase_admin._apps:
-    cred = credentials.Certificate(json.loads(FIREBASE_CONFIG))
-    firebase_admin.initialize_app(cred)
+    # ================= VIEW =================
+    class GremioView(discord.ui.View):
+        def __init__(self, cog):
+            super().__init__(timeout=None)
+            self.cog = cog
 
-db = firestore.client()
+        @discord.ui.button(
+            label="Unirme / Salir del gremio",
+            style=discord.ButtonStyle.success,
+            custom_id="toggle_gremio"
+        )
+        async def toggle(self, interaction: discord.Interaction, button: discord.ui.Button):
+            member = interaction.user
+            role = interaction.guild.get_role(self.cog.ROL_GREMIO_ID)
+            now = datetime.datetime.now(
+                ZoneInfo("America/Argentina/Buenos_Aires")
+            )
 
-# ================= DISCORD ==================
-intents = discord.Intents.default()
-intents.members = True
+            if role in member.roles:
+                await interaction.response.send_modal(
+                    self.cog.MotivoSalidaModal(self.cog, member)
+                )
+                return
 
-bot = commands.Bot(command_prefix="!", intents=intents)
+            await member.add_roles(role)
 
-# ================= MODAL ====================
-class MotivoSalidaModal(discord.ui.Modal, title="Salida del gremio"):
-    motivo = discord.ui.TextInput(
-        label="Motivo de la salida",
-        placeholder="Explicá brevemente el motivo...",
-        max_length=300,
-        required=True
-    )
+            self.cog.db.collection("MiembrosGremio").document(str(member.id)).set({
+                "user_id": member.id,
+                "username": str(member),
+                "fecha": now.strftime("%d/%m/%Y"),
+                "hora": now.strftime("%H:%M")
+            })
 
-    def __init__(self, member: discord.Member):
-        super().__init__()
-        self.member = member
+            await interaction.response.send_message(
+                "✅ Te uniste al gremio.",
+                ephemeral=True
+            )
 
-    async def on_submit(self, interaction: discord.Interaction):
-        role = interaction.guild.get_role(ROL_GREMIO_ID)
-        now = datetime.datetime.now(
-            ZoneInfo("America/Argentina/Buenos_Aires")
+    # ================= MODAL =================
+    class MotivoSalidaModal(discord.ui.Modal, title="Salida del gremio"):
+        motivo = discord.ui.TextInput(
+            label="Motivo",
+            placeholder="Explicá brevemente el motivo...",
+            max_length=300,
+            required=True
         )
 
-        if role in self.member.roles:
-            await self.member.remove_roles(role)
+        def __init__(self, cog, member):
+            super().__init__()
+            self.cog = cog
+            self.member = member
 
-        db.collection("MiembrosGremio").document(str(self.member.id)).delete()
+        async def on_submit(self, interaction: discord.Interaction):
+            role = interaction.guild.get_role(self.cog.ROL_GREMIO_ID)
+            now = datetime.datetime.now(
+                ZoneInfo("America/Argentina/Buenos_Aires")
+            )
 
-        db.collection("SalidasGremio").add({
-            "user_id": self.member.id,
-            "username": str(self.member),
-            "fecha": now.strftime("%d/%m/%Y"),
-            "hora": now.strftime("%H:%M"),
-            "motivo": self.motivo.value
-        })
+            if role in self.member.roles:
+                await self.member.remove_roles(role)
 
-        await interaction.response.send_message(
-            "🚪 Saliste del gremio correctamente.",
-            ephemeral=True
-        )
+            self.cog.db.collection("MiembrosGremio").document(
+                str(self.member.id)
+            ).delete()
 
-# ================= VIEW =====================
-class GremioView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
+            self.cog.db.collection("SalidasGremio").add({
+                "user_id": self.member.id,
+                "username": str(self.member),
+                "fecha": now.strftime("%d/%m/%Y"),
+                "hora": now.strftime("%H:%M"),
+                "motivo": self.motivo.value
+            })
 
-    @discord.ui.button(
-        label="Unirme / Salir del gremio",
-        style=discord.ButtonStyle.success,
-        custom_id="toggle_gremio"
-    )
-    async def toggle(self, interaction: discord.Interaction, button: discord.ui.Button):
-        member = interaction.user
-        role = interaction.guild.get_role(ROL_GREMIO_ID)
-        now = datetime.datetime.now(
-            ZoneInfo("America/Argentina/Buenos_Aires")
-        )
+            await interaction.response.send_message(
+                "🚪 Saliste del gremio.",
+                ephemeral=True
+            )
 
-        if role in member.roles:
-            await interaction.response.send_modal(MotivoSalidaModal(member))
+    # ================= READY =================
+    @commands.Cog.listener()
+    async def on_ready(self):
+        channel = self.bot.get_channel(self.CANAL_ANUNCIOS_ID)
+        if not channel:
             return
 
-        await member.add_roles(role)
-
-        db.collection("MiembrosGremio").document(str(member.id)).set({
-            "user_id": member.id,
-            "username": str(member),
-            "fecha": now.strftime("%d/%m/%Y"),
-            "hora": now.strftime("%H:%M")
-        })
-
-        await interaction.response.send_message(
-            "✅ Te uniste al gremio.",
-            ephemeral=True
-        )
-
-# ================= EVENTOS ==================
-@bot.event
-async def on_ready():
-    print(f"✅ Bot conectado como {bot.user}")
-
-    # 🔥 botones persistentes
-    bot.add_view(GremioView())
-
-    canal = bot.get_channel(CANAL_ANUNCIOS_ID)
-    if canal is None:
-        print("❌ No se encontró el canal de anuncios")
-        return
-
-    hora_arg = datetime.datetime.now(
-        ZoneInfo("America/Argentina/Buenos_Aires")
-    ).strftime("%H:%M")
-
-    embed = discord.Embed(
-        title="🚌 Gremio de Colectiveros",
-        description=(
-            "### 📌 ¿Qué es el gremio?\n"
-            "Organización de colectiveros donde se pueden presentar reclamos,\n"
-            "coordinar acciones y organizar movilizaciones.\n\n"
-            "### 🏛️ Estructura\n"
-            f"• **Dirección:** <@&{ROL_DIRECTIVOS_ID}>\n"
-            f"• **Miembros:** <@&{ROL_GREMIO_ID}>\n\n"
-            "### 💬 Comunicación\n"
-            f"Canal oficial: <#{CANAL_COMUNICACION_ID}>"
-        ),
-        color=discord.Color.dark_green()
-    )
-
-    embed.set_footer(text=f"La Nueva Metropol S.A. | {hora_arg}")
-
-    file = discord.File(BANNER_PATH, filename="BannerGremio.png")
-    embed.set_image(url="attachment://BannerGremio.png")
-
-    await canal.send(embed=embed, view=GremioView(), file=file)
-
-@bot.event
-async def on_member_remove(member: discord.Member):
-    role = member.guild.get_role(ROL_GREMIO_ID)
-
-    if role and role in member.roles:
-        now = datetime.datetime.now(
+        hora_arg = datetime.datetime.now(
             ZoneInfo("America/Argentina/Buenos_Aires")
+        ).strftime("%H:%M")
+
+        embed = discord.Embed(
+            title="🚌 Gremio de Colectiveros",
+            description=(
+                "### 📌 ¿Qué es el gremio?\n"
+                "Espacio donde los colectiveros pueden presentar reclamos,\n"
+                "organizarse y coordinar acciones.\n\n"
+                "### 🏛️ Estructura\n"
+                f"• **Dirección:** <@&{self.ROL_DIRECTIVOS_ID}>\n"
+                f"• **Miembros:** <@&{self.ROL_GREMIO_ID}>\n\n"
+                "### 💬 Comunicación\n"
+                f"Canal oficial: <#{self.CANAL_COMUNICACION_ID}>"
+            ),
+            color=0x1F8B4C
         )
 
-        db.collection("MiembrosGremio").document(str(member.id)).delete()
+        embed.set_footer(
+            text=f"La Nueva Metropol S.A. | {hora_arg}"
+        )
 
-        db.collection("SalidasGremio").add({
-            "user_id": member.id,
-            "username": str(member),
-            "fecha": now.strftime("%d/%m/%Y"),
-            "hora": now.strftime("%H:%M"),
-            "motivo": "Salida del servidor"
-        })
+        file = discord.File(self.BANNER_PATH, filename="BannerGremio.png")
+        embed.set_image(url="attachment://BannerGremio.png")
 
-# ================= RUN =====================
-bot.run(DISCORD_TOKEN)
+        await channel.send(
+            embed=embed,
+            view=self.GremioView(self),
+            file=file
+        )
+
+    # ============== LEAVE SERVER ==============
+    @commands.Cog.listener()
+    async def on_member_remove(self, member):
+        role = member.guild.get_role(self.ROL_GREMIO_ID)
+        if role and role in member.roles:
+            now = datetime.datetime.now(
+                ZoneInfo("America/Argentina/Buenos_Aires")
+            )
+
+            self.db.collection("MiembrosGremio").document(
+                str(member.id)
+            ).delete()
+
+            self.db.collection("SalidasGremio").add({
+                "user_id": member.id,
+                "username": str(member),
+                "fecha": now.strftime("%d/%m/%Y"),
+                "hora": now.strftime("%H:%M"),
+                "motivo": "Salida del servidor"
+            })
+
+async def setup(bot):
+    await bot.add_cog(GremioEmbed(bot))
