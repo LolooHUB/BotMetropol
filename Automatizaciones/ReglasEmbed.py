@@ -42,7 +42,7 @@ class ReglasAutomatizacion(commands.Cog):
             e2.add_field(name="` A3 ` ➤ **HOSTIGAMIENTO POR MD**", value="No satures los mensajes privados del Staff. Para soporte, utilizá los canales oficiales.", inline=False)
             e2.add_field(name="` A4 ` ➤ **DIFAMACIÓN E IMAGEN**", value="Cualquier intento de dañar deliberadamente la imagen de la empresa será sancionado.", inline=False)
             e2.add_field(name="` A5 ` ➤ **COMERCIO ILEGAL**", value="Prohibida la venta de archivos o modelos que no sean de tu autoría.", inline=False)
-            e2.add_field(name="` A6 ` ➤ **POLÉMICAS Y RUMORES**", value="Generar acusaciones sin pruebas o afirmar que la empresa filtra contenido será **__PENALIZADO__**.", inline=False)
+            e2.add_field(name="` A6 ` ➤ **POLÉMICAS Y RUMORES**", value="Generar acusaciones sin pruebas o afirmar que la empresa filtra contenido será **__PENALIZADO Y DESMENTIDO.__**.", inline=False)
             e2.set_footer(text="⚖️ Sanción: PBAN o Warn, dependiendo de la gravedad.")
 
             # Embed 3: Reglas de Juego
