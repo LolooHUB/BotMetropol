@@ -26,7 +26,7 @@ class Ban(commands.Cog):
         db = firestore.client()
         
         try:
-            # Guardar en Firebase con el formato de duración solicitado
+            # Guardar en Firebase con el formato solicitado
             db.collection("Baneos").add({
                 "Usuario": usuario.name, "UsuarioID": str(usuario.id),
                 "Moderador": interaction.user.name, "Fecha": fecha_str,
@@ -36,39 +36,40 @@ class Ban(commands.Cog):
             # Ejecutar baneo en el servidor
             await usuario.ban(reason=f"{motivo} | Duración: {duracion_display}")
 
-            # --- PREPARACIÓN DE ARCHIVOS ---
-            f1 = discord.File("Imgs/LogoPFP.png", filename="LogoPFP.png")
-            f2 = discord.File("Imgs/Banner.png", filename="Banner.png")
+            # --- PREPARACIÓN DE ARCHIVOS Y EVIDENCIA ---
             evidencia_url = evidencia.url if evidencia else "No proporcionada"
-
-            # --- EMBED PARA CANAL PÚBLICO (SANCIONES) ---
-            embed_pub = discord.Embed(title="⛔ Usuario Baneado", color=discord.Color.red(), timestamp=fecha_ahora)
-            embed_pub.set_author(name="La Nueva Metropol S.A.", icon_url="attachment://LogoPFP.png")
-            embed_pub.set_image(url="attachment://Banner.png")
-            embed_pub.add_field(name="Usuario", value=usuario.mention, inline=False)
-            embed_pub.add_field(name="Motivo", value=f"```\n{motivo}\n```", inline=False)
-            embed_pub.add_field(name="Duración", value=duracion_display, inline=False)
-            # Evidencia en formato texto para no ocupar espacio visual de imagen
-            embed_pub.add_field(name="Evidencia", value=evidencia_url, inline=False)
-            embed_pub.set_footer(text=f"La Nueva Metropol S.A. | {fecha_str}")
-
-            # --- ENVÍO A CANALES ---
             canal_sanciones = interaction.guild.get_channel(1397738825609904242)
-            canal_logs_evidencia = interaction.guild.get_channel(1467601585029910668)
+            canal_solo_evidencia = interaction.guild.get_channel(1467601585029910668)
 
-            # 1. Envío a Sanciones (Público)
+            # --- 1. ENVÍO AL CANAL DE SANCIONES (EMBED + TEXTO) ---
             if canal_sanciones:
-                await canal_sanciones.send(files=[f1, f2], embed=embed_pub)
-
-            # 2. Envío a Logs (Evidencia Detallada)
-            if canal_logs_evidencia:
-                embed_log = embed_pub.copy()
-                embed_log.set_image(url=evidencia.url if evidencia else None) # Aquí sí se ve la imagen
-                embed_log.add_field(name="Moderador Responsable", value=interaction.user.mention)
+                f1 = discord.File("Imgs/LogoPFP.png", filename="LogoPFP.png")
+                f2 = discord.File("Imgs/Banner.png", filename="Banner.png")
                 
-                # Re-adjuntar archivos para el nuevo mensaje
-                f_log1 = discord.File("Imgs/LogoPFP.png", filename="LogoPFP.png")
-                await canal_logs_evidencia.send(file=f_log1, embed=embed_log)
+                embed_pub = discord.Embed(title="⛔ Usuario Baneado", color=discord.Color.red(), timestamp=fecha_ahora)
+                embed_pub.set_author(name="La Nueva Metropol S.A.", icon_url="attachment://LogoPFP.png")
+                embed_pub.set_image(url="attachment://Banner.png")
+                embed_pub.add_field(name="Usuario", value=usuario.mention, inline=False)
+                embed_pub.add_field(name="Motivo", value=f"```\n{motivo}\n```", inline=False)
+                embed_pub.add_field(name="Duración", value=duracion_display, inline=False)
+                embed_pub.set_footer(text=f"La Nueva Metropol S.A. | {fecha_str}")
+                
+                # Enviamos el embed y luego la evidencia como mensaje normal (texto)
+                await canal_sanciones.send(files=[f1, f2], embed=embed_pub)
+                await canal_sanciones.send(content=f"📑 **Evidencia de {usuario.name}:** {evidencia_url}")
+
+            # --- 2. ENVÍO AL CANAL DE SOLO EVIDENCIAS (IMAGEN) ---
+            if canal_solo_evidencia and evidencia:
+                embed_ev = discord.Embed(
+                    title="📸 Registro de Evidencia",
+                    description=f"**Usuario:** {usuario.mention}\n**ID:** `{usuario.id}`\n**Moderador:** {interaction.user.mention}",
+                    color=discord.Color.blue(),
+                    timestamp=fecha_ahora
+                )
+                embed_ev.set_image(url=evidencia.url)
+                embed_ev.set_footer(text="Archivo de Evidencias Metropol")
+                
+                await canal_solo_evidencia.send(embed=embed_ev)
 
             await interaction.response.send_message(f"✅ Se ha baneado a **{usuario.name}** correctamente ({duracion_display}).", ephemeral=True)
 
