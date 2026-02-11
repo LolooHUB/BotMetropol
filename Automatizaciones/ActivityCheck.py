@@ -1,7 +1,6 @@
 import discord
 from discord.ext import commands, tasks
 from datetime import datetime, timedelta, timezone
-import asyncio
 
 # --- CONFIGURACIÓN HORA ARGENTINA ---
 tz_arg = timezone(timedelta(hours=-3))
@@ -11,35 +10,41 @@ class ActivityCheck(commands.Cog):
         self.bot = bot
         self.admin_roles = [1390152252169125992, 1445570965852520650, 1397020690435149824]
         self.log_channel_id = 1390152261937922070
-        self.check_loop.start() # Iniciar el rastreador automático
+        self.preguntas_id = 1390152261367369788
+        self.tickets_id = 1390152260578967559
+        self.check_loop.start()
 
     def cog_unload(self):
         self.check_loop.cancel()
 
     @commands.command(name="ac")
     async def activity_check(self, ctx):
-        # 1. Verificar Permisos (Roles de Admin)
+        # 1. Validación de Roles
         if not any(role.id in self.admin_roles for role in ctx.author.roles):
             return await ctx.send("❌ No tienes permisos para iniciar un Activity Check.", delete_after=5)
 
-        # 2. Formato del Mensaje
-        embed_content = (
+        # 2. Mensaje con formato solicitado
+        message_content = (
             "## :white_check_mark: Activity Check\n\n"
             ":point_right: Con el fin de mantener una comunidad mas activa, se realiza cada tanto un **ACTIVITY CHECK**.\n\n"
             "`¿En que consiste?` \n"
-            "El equipo de moderacion, con fines de revisar que usuarios permanecen activos, realizaran **cada un tiempo indeterminado** estas revisiones.\n\n"
+            "El equipo de moderacion, con fines de revisar que usuarios permanecen activos, que cuentas quedan inactivas y etc, realizaran **cada un tiempo indeterminado** estas revisiones.\n\n"
             "*Aquellos usuarios que no reaccionen pasados los 3 dias, podran sufrir las siguientes consecuencias :*\n"
-            "> Se agregara a una lista de Inactivos, compartida con otros servidores.\n"
-            "> `Sanciones:` Warn / Kick\n\n"
-            "`¿Dudas? :` #〔❓〕preguntas o #〔📨〕ᴛɪᴄᴋᴇᴛꜱ\n\n"
-            "**Reacciona con \"✅\" para indicar que estás activo.**\n"
+            "> Se agregara a una lista de Inactivos, compartida con otros servidores (Afecta reputacion en general).\n"
+            "> `Podra sufrir sanciones como :` \n"
+            "> Warn \n"
+            "> Kick \n\n"
+            f"`¿Y donde mando mis dudas? :` \n"
+            f"Las podes mandar en <#{self.preguntas_id}> (Si no son relevantes al staff.)\n"
+            f"O en caso que pueda implicar moderacion : <#{self.tickets_id}>\n\n"
+            "`Reacciona con \"`*:white_check_mark:*`\" para indicar que leiste este mensaje y que te encontras activo.`\n"
             "|| Ping : @everyone ||"
         )
 
-        msg = await ctx.send(embed_content)
+        msg = await ctx.send(content=message_content)
         await msg.add_reaction("✅")
 
-        # 3. Guardar en Firebase (usando la DB de tu cliente)
+        # 3. Guardado en Firebase (Usa la instancia de tu cliente)
         db = self.bot.db
         if db:
             try:
@@ -59,7 +64,6 @@ class ActivityCheck(commands.Cog):
         db = self.bot.db
         if not db: return
 
-        # Buscar checks no procesados
         docs = db.collection("ActivityChecks").where("procesado", "==", False).stream()
         ahora = datetime.now(tz_arg)
 
@@ -84,30 +88,24 @@ class ActivityCheck(commands.Cog):
                 async for user in reaction.users():
                     reaccionaron.append(user.id)
 
-            inactivos = []
-            for member in guild.members:
-                if not member.bot and member.id not in reaccionaron:
-                    inactivos.append(f"• {member.name} ({member.id})")
+            inactivos = [f"• {m.name} ({m.id})" for m in guild.members if not m.bot and m.id not in reaccionaron]
 
-            # Enviar el reporte al canal de logs
-            header = f"📋 **REPORTE DE INACTIVIDAD**\nID Mensaje: `{msg_id}`\n"
+            # Envío de reporte
+            header = f"📋 **REPORTE DE INACTIVIDAD FINALIZADO**\nID Mensaje: `{msg_id}`\n"
             if inactivos:
                 lista_str = "\n".join(inactivos)
                 if len(lista_str) > 1800:
-                    # Si es muy larga, enviar archivo
-                    with open("inactivos.txt", "w", encoding="utf-8") as f:
-                        f.write(lista_str)
+                    with open("inactivos.txt", "w", encoding="utf-8") as f: f.write(lista_str)
                     await log_channel.send(content=header, file=discord.File("inactivos.txt"))
                 else:
                     await log_channel.send(f"{header}```\n{lista_str}\n```")
             else:
-                await log_channel.send(f"{header} No se encontraron usuarios inactivos.")
+                await log_channel.send(f"{header} No hubo usuarios inactivos.")
 
-            # Marcar como procesado
             self.bot.db.collection("ActivityChecks").document(msg_id).update({"procesado": True})
 
         except Exception as e:
-            print(f"Error al procesar AC {msg_id}: {e}")
+            print(f"Error procesando AC {msg_id}: {e}")
 
 async def setup(bot):
     await bot.add_cog(ActivityCheck(bot))
